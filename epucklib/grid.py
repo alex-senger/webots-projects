@@ -7,6 +7,7 @@ handed straight to `imshow(origin="lower")` for plotting.
 """
 
 import math
+from collections import deque
 
 import numpy as np
 
@@ -179,3 +180,104 @@ class CoverageMap:
         """Covered share of the coverable floor, in [0, 1]."""
         covered, coverable = self.coverage_counts()
         return covered / coverable if coverable else 0.0
+
+    # ---- planning ----
+
+    def covers_something_new(self, row: int, col: int) -> bool:
+        """Would parking the robot here sweep any ground it has not swept?
+
+        The question is about the footprint, not the single cell: the robot is
+        nearly two cells wide, so it can finish a cell by standing beside it.
+        """
+        for d_row, d_col in self._disk:
+            r, c = row + d_row, col + d_col
+            if 0 <= r < self.n and 0 <= c < self.n:
+                if not self.covered[r, c] and self.state[r, c] != OCCUPIED:
+                    return True
+        return False
+
+    def nearest_uncovered(self, start):
+        """Breadth-first path from `start` to the closest worthwhile cell.
+
+        Because every grid edge costs the same, a plain BFS already yields the
+        shortest path; there is nothing for A* to improve on here. Returns None
+        once everything still uncovered is walled off or already done.
+        """
+        blocked = self.blocked_mask()
+        if blocked[start]:
+            # The robot has ended up somewhere the planner considers illegal --
+            # nudged into the wall band, say. Clearing just the start cell is
+            # not enough, because every neighbour is usually just as illegal
+            # and the search would die immediately; clear enough room around it
+            # to escape. This only ever fires when something has already gone
+            # wrong, and the reactive layer still guards the drive.
+            blocked = blocked.copy()
+            row, col = start
+            reach = self._inflate_cells + 1
+            blocked[
+                max(0, row - reach) : row + reach + 1,
+                max(0, col - reach) : col + reach + 1,
+            ] = False
+
+        came_from = {start: None}
+        queue = deque([start])
+        while queue:
+            current = queue.popleft()
+            if current != start and self.covers_something_new(*current):
+                return self._trace_path(came_from, current)
+
+            row, col = current
+            for neighbour in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
+                r, c = neighbour
+                if 0 <= r < self.n and 0 <= c < self.n:
+                    if neighbour not in came_from and not blocked[neighbour]:
+                        came_from[neighbour] = current
+                        queue.append(neighbour)
+        return None
+
+    @staticmethod
+    def _trace_path(came_from, cell):
+        path = [cell]
+        while came_from[path[-1]] is not None:
+            path.append(came_from[path[-1]])
+        path.reverse()
+        return path
+
+    def shortcut(self, path):
+        """Drop waypoints the robot can simply drive past.
+
+        BFS returns a staircase of single-cell steps; following it literally
+        would make the robot stutter. Greedily jumping to the furthest cell
+        still in clear line of sight turns it into a few long straight runs.
+        """
+        if len(path) < 3:
+            return list(path)
+
+        blocked = self.blocked_mask()
+        waypoints = [path[0]]
+        index = 0
+        while index < len(path) - 1:
+            furthest = len(path) - 1
+            while furthest > index + 1 and not self._line_clear(
+                path[index], path[furthest], blocked
+            ):
+                furthest -= 1
+            waypoints.append(path[furthest])
+            index = furthest
+        return waypoints
+
+    def _line_clear(self, start, end, blocked) -> bool:
+        """Is the straight line between two cell centres free of blocked cells?"""
+        start_x, start_y = self.cell_center(*start)
+        end_x, end_y = self.cell_center(*end)
+        length = math.hypot(end_x - start_x, end_y - start_y)
+        steps = max(1, int(length / (self.cell * 0.5)))
+        for index in range(steps + 1):
+            fraction = index / steps
+            cell = self.world_to_cell(
+                start_x + fraction * (end_x - start_x),
+                start_y + fraction * (end_y - start_y),
+            )
+            if cell is None or blocked[cell]:
+                return False
+        return True

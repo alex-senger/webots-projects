@@ -187,3 +187,106 @@ def test_the_blocked_mask_is_a_fresh_array_each_time():
     first = grid.blocked_mask()
     first[25, 25] = True
     assert not grid.blocked_mask()[25, 25]
+
+
+def test_a_cell_is_worth_visiting_while_its_footprint_holds_new_ground():
+    grid = make_map()
+    assert grid.covers_something_new(25, 25)
+    grid.stamp_covered(0.0, 0.0)
+    assert not grid.covers_something_new(25, 25)
+
+
+def test_a_cell_whose_footprint_is_all_obstacle_is_not_worth_visiting():
+    grid = make_map()
+    grid.state[20:30, 20:30] = OCCUPIED
+    assert not grid.covers_something_new(25, 25)
+
+
+def test_the_path_starts_where_the_robot_is_and_ends_somewhere_new():
+    grid = make_map()
+    grid.stamp_covered(0.0, 0.0)
+    path = grid.nearest_uncovered((25, 25))
+    assert path is not None
+    assert path[0] == (25, 25)
+    assert grid.covers_something_new(*path[-1])
+
+
+def test_the_path_is_connected_step_by_step():
+    grid = make_map()
+    grid.stamp_covered(0.0, 0.0)
+    path = grid.nearest_uncovered((25, 25))
+    for (row_a, col_a), (row_b, col_b) in zip(path, path[1:]):
+        assert abs(row_a - row_b) + abs(col_a - col_b) == 1
+
+
+def test_the_nearest_target_is_chosen_not_a_far_one():
+    grid = make_map()
+    # Cover everything, then reopen one cell a short way off.
+    grid.covered[:, :] = True
+    grid.covered[25, 31] = False
+    path = grid.nearest_uncovered((25, 25))
+    assert path is not None
+    # Reaching it means getting within a footprint of it, not standing on it:
+    # the robot only has to reach column 30 to sweep column 31.
+    assert len(path) <= 6
+
+
+def test_a_fully_covered_map_has_nowhere_left_to_go():
+    grid = make_map()
+    grid.covered[:, :] = True
+    assert grid.nearest_uncovered((25, 25)) is None
+
+
+def test_the_path_never_crosses_a_blocked_cell():
+    grid = make_map()
+    grid.covered[:, :] = True
+    grid.covered[25, 40] = False
+    # A confirmed wall across the arena, with a gap at the very bottom.
+    grid.state[5:50, 33] = OCCUPIED
+    path = grid.nearest_uncovered((25, 25))
+    assert path is not None
+    blocked = grid.blocked_mask()
+    assert not any(blocked[cell] for cell in path[1:])
+
+
+def test_an_unreachable_pocket_is_reported_as_nothing_left_to_do():
+    grid = make_map()
+    grid.covered[:, :] = True
+    grid.covered[25, 40] = False
+    grid.state[:, 33] = OCCUPIED  # a wall with no gap at all
+    assert grid.nearest_uncovered((25, 25)) is None
+
+
+def test_a_robot_standing_in_a_blocked_cell_can_still_plan_its_way_out():
+    grid = make_map()
+    grid.stamp_covered(0.0, 0.0)
+    # Being pushed against a wall must not strand the planner.
+    path = grid.nearest_uncovered((0, 0))
+    assert path is not None
+
+
+def test_shortcut_collapses_a_straight_run_to_its_endpoints():
+    grid = make_map()
+    path = [(25, col) for col in range(25, 35)]
+    assert grid.shortcut(path) == [(25, 25), (25, 34)]
+
+
+def test_shortcut_keeps_a_corner_it_cannot_cut():
+    grid = make_map()
+    # An L: east along row 25, then north along column 25.
+    path = [(25, col) for col in range(20, 26)] + [(row, 25) for row in range(26, 40)]
+    # With nothing in the way the whole L collapses to its two endpoints.
+    assert grid.shortcut(path) == [(25, 20), (39, 25)]
+
+    # Put a barrier across the diagonal the shortcut just took.
+    grid.state[30:35, 21] = OCCUPIED
+    shortened = grid.shortcut(path)
+    assert shortened[0] == path[0]
+    assert shortened[-1] == path[-1]
+    assert len(shortened) > 2  # the corner had to survive
+    assert len(shortened) < len(path)
+
+
+def test_shortcut_leaves_a_trivial_path_alone():
+    grid = make_map()
+    assert grid.shortcut([(25, 25)]) == [(25, 25)]
