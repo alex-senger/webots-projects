@@ -8,6 +8,7 @@ handed straight to `imshow(origin="lower")` for plotting.
 
 import math
 from collections import deque
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -91,7 +92,7 @@ class CoverageMap:
 
     # ---- geometry ----
 
-    def world_to_cell(self, x: float, y: float):
+    def world_to_cell(self, x: float, y: float) -> tuple[int, int] | None:
         """(row, col) containing a world point, or None if it is off the map."""
         col = int(math.floor((x + self.half) / self.cell))
         row = int(math.floor((y + self.half) / self.cell))
@@ -105,6 +106,26 @@ class CoverageMap:
             (col + 0.5) * self.cell - self.half,
             (row + 0.5) * self.cell - self.half,
         )
+
+    def stampable_mask(self) -> np.ndarray:
+        """Cells the robot's footprint could ever mark as covered.
+
+        A cell centre is only *centre-reachable* if the robot's centre -- kept
+        at least a body radius from the wall -- can stand there. Coverage then
+        spreads from every centre-reachable cell outward through the same
+        footprint disk `stamp_covered` uses, so this is that mask dilated by
+        the disk. Whatever the disk never reaches can never be credited as
+        swept, however the robot is driven, which makes this the honest
+        denominator for "how much of the floor did it actually get?".
+        """
+        stampable = np.zeros((self.n, self.n), dtype=bool)
+        rows, cols = np.nonzero(self._center_reachable)
+        for row, col in zip(rows, cols):
+            for d_row, d_col in self._disk:
+                r, c = row + d_row, col + d_col
+                if 0 <= r < self.n and 0 <= c < self.n:
+                    stampable[r, c] = True
+        return stampable
 
     # ---- recording ----
 
@@ -196,7 +217,9 @@ class CoverageMap:
                     return True
         return False
 
-    def nearest_uncovered(self, start):
+    def nearest_uncovered(
+        self, start: tuple[int, int]
+    ) -> list[tuple[int, int]] | None:
         """Breadth-first path from `start` to the closest worthwhile cell.
 
         Because every grid edge costs the same, a plain BFS already yields the
@@ -243,7 +266,9 @@ class CoverageMap:
         path.reverse()
         return path
 
-    def shortcut(self, path):
+    def shortcut(
+        self, path: Sequence[tuple[int, int]]
+    ) -> list[tuple[int, int]]:
         """Drop waypoints the robot can simply drive past.
 
         BFS returns a staircase of single-cell steps; following it literally
@@ -266,7 +291,12 @@ class CoverageMap:
             index = furthest
         return waypoints
 
-    def _line_clear(self, start, end, blocked) -> bool:
+    def _line_clear(
+        self,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        blocked: np.ndarray,
+    ) -> bool:
         """Is the straight line between two cell centres free of blocked cells?"""
         start_x, start_y = self.cell_center(*start)
         end_x, end_y = self.cell_center(*end)

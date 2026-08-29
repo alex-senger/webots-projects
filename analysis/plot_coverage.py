@@ -20,12 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from epucklib.epuck import BODY_RADIUS_M  # noqa: E402
+from epucklib.grid import OCCUPIED, CoverageMap  # noqa: E402
 
 TRACES = REPO_ROOT / "analysis" / "traces"
 CONTROLLER_NAME = "epuck_roomba"
 OUTPUT = REPO_ROOT / "docs" / "figures" / "roomba_coverage.png"
-
-OCCUPIED = 2
 
 
 def load_trace(path):
@@ -38,39 +37,6 @@ def load_trace(path):
             coverage.append(float(row["coverage"]) * 100.0)
             modes.append(row["mode"])
     return times, xs, ys, coverage, modes
-
-
-def stampable_mask(n: int, cell_size_m: float, half_extent_m: float) -> np.ndarray:
-    """Cells the robot's footprint could ever mark as covered.
-
-    A cell centre is only *centre-reachable* if the robot's centre -- kept at
-    least a body radius from the wall -- can stand there. The footprint disk
-    then spreads coverage from every centre-reachable cell outward, using the
-    same offset rule `CoverageMap` uses to stamp a footprint (`grid.py`,
-    `_disk_offsets`). Anything the disk never reaches is structurally
-    unstampable, regardless of how the robot is driven.
-    """
-    centers = (np.arange(n) + 0.5) * cell_size_m - half_extent_m
-    limit = half_extent_m - BODY_RADIUS_M
-    in_reach = np.abs(centers) <= limit
-    center_reachable = np.outer(in_reach, in_reach)
-
-    reach = int(np.floor(BODY_RADIUS_M / cell_size_m)) + 1
-    offsets = [
-        (d_row, d_col)
-        for d_row in range(-reach, reach + 1)
-        for d_col in range(-reach, reach + 1)
-        if np.hypot(d_row, d_col) * cell_size_m <= BODY_RADIUS_M
-    ]
-
-    stampable = np.zeros((n, n), dtype=bool)
-    rows, cols = np.nonzero(center_reachable)
-    for row, col in zip(rows, cols):
-        for d_row, d_col in offsets:
-            r, c = row + d_row, col + d_col
-            if 0 <= r < n and 0 <= c < n:
-                stampable[r, c] = True
-    return stampable
 
 
 def main():
@@ -89,7 +55,14 @@ def main():
 
     times, xs, ys, coverage, modes = load_trace(trace_path)
 
-    stampable = stampable_mask(n, cell_size, half)
+    # Rebuild the run's grid geometry from the NPZ header and ask it which
+    # cells the footprint could ever have stamped, rather than reimplementing
+    # the rule here -- a fork of it would go quietly stale the moment the
+    # grid's geometry changed.
+    geometry = CoverageMap(
+        half_extent_m=half, cell_size_m=cell_size, robot_radius_m=BODY_RADIUS_M
+    )
+    stampable = geometry.stampable_mask()
     out_of_reach = ~stampable & (state != OCCUPIED)
 
     # 0 = untouched floor, 1 = swept, 2 = obstacle, 3 = structurally out of reach.

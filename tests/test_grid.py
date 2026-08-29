@@ -76,6 +76,28 @@ def test_stamping_near_the_wall_is_clipped_not_wrapped():
     assert not grid.covered[49, 49]
 
 
+def test_the_arena_centre_is_stampable_and_the_outer_ring_is_not():
+    grid = make_map()
+    stampable = grid.stampable_mask()
+    assert stampable[25, 25]
+    # The robot's centre stops a body radius short of the wall and its
+    # footprint reaches one cell further, so the outermost ring stays cold.
+    assert not stampable[0, :].any()
+    assert not stampable[49, :].any()
+    assert not stampable[:, 0].any()
+    assert not stampable[:, 49].any()
+
+
+def test_the_stampable_area_is_the_reachable_centres_grown_by_the_footprint():
+    grid = make_map()
+    stampable = grid.stampable_mask()
+    # Centres reach rows/cols 2..47 (|centre| <= 0.5 - 0.037), and the 3.7 cm
+    # footprint adds one cell each way: a 48x48 block spanning indices 1..48.
+    assert stampable.sum() == 2304
+    assert (~stampable).sum() == 196
+    assert stampable[1:49, 1:49].all()
+
+
 def test_coverage_is_measured_against_the_cells_that_can_be_covered():
     grid = make_map()
     assert grid.coverage_counts() == (0, 2500)
