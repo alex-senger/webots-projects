@@ -14,7 +14,7 @@ in one repository and the Python environment is managed with
 
 The `controller` module is provided by Webots itself — it is **not** a pip
 package. For controllers to also see the packages from this project (`numpy`,
-the shared `webots_projects` library, …), Webots must run them with **this
+the shared `epucklib` library, …), Webots must run them with **this
 project's** Python interpreter.
 
 Set the Python command in Webots to the project venv:
@@ -79,9 +79,9 @@ COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
   tangential term blended into the waypoint bearing; and a stall detector that
   backs out of traps. Coverage progress goes to the console.
 
-  On its last measured run it covered 91.5% of the arena floor (99.3% of what
+  On its last measured run it covered 91.5% of the arena floor (99.4% of what
   the coverage metric can represent — a one-cell ring around the border can
-  never be credited as swept, see below) and stopped at t≈358 s of simulated
+  never be credited as swept, see below) and stopped at t≈339 s of simulated
   time because nothing reachable remained.
 
   Headless run:
@@ -103,6 +103,16 @@ COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
   can never get within a body radius of the wall, so that outer ring is
   structurally out of the coverage metric's reach rather than actually
   unswept.
+
+  The white specks *inside* the black boxes are not unswept floor either —
+  they are box interior that only ever got seen once, so it never reached the
+  two-hit threshold that confirms an obstacle. Of the 207 uncovered cells, 193
+  are that out-of-reach ring and 12 of the remaining 14 are these interior
+  specks, which puts the robot's true miss count at 2 cells.
+
+- **Switching demos.** `epuck_go_forward`, `epuck_braitenberg` and
+  `epuck_roomba` all share `worlds/epuck.wbt`, so running a different one
+  means changing the `controller` field on the robot in that world.
 
 ## Tests
 

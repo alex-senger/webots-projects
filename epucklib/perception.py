@@ -20,6 +20,10 @@ from epucklib.epuck import (
     SENSOR_OFFSETS_M,
 )
 
+# epucklib.odometry imports only control and epuck, so this is a leaf-ward
+# import: no cycle.
+from epucklib.odometry import Pose
+
 # np.interp needs its sample points increasing, and the raw value *falls* with
 # distance, so both table columns are reversed once here at import time.
 _RAW_ASCENDING = np.array(LOOKUP_RAW[::-1])
@@ -41,7 +45,9 @@ def read_distances(raw_readings: Sequence[float]) -> list[float]:
     return [raw_to_distance(value) for value in raw_readings]
 
 
-def sensor_ray(pose, index: int, distance_m: float):
+def sensor_ray(
+    pose: Pose, index: int, distance_m: float
+) -> tuple[tuple[float, float], tuple[float, float]]:
     """World-frame (origin, endpoint) of one sensor's ray.
 
     The origin is where the sensor actually sits on the robot's shell, not the
