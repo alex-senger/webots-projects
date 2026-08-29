@@ -110,13 +110,9 @@ class CoverageMap:
     def stampable_mask(self) -> np.ndarray:
         """Cells the robot's footprint could ever mark as covered.
 
-        A cell centre is only *centre-reachable* if the robot's centre -- kept
-        at least a body radius from the wall -- can stand there. Coverage then
-        spreads from every centre-reachable cell outward through the same
-        footprint disk `stamp_covered` uses, so this is that mask dilated by
-        the disk. Whatever the disk never reaches can never be credited as
-        swept, however the robot is driven, which makes this the honest
-        denominator for "how much of the floor did it actually get?".
+        The centre-reachable cells dilated by the same footprint disk
+        `stamp_covered` uses. What the disk never reaches can never be credited
+        as swept however the robot is driven, so this is the honest denominator.
         """
         stampable = np.zeros((self.n, self.n), dtype=bool)
         rows, cols = np.nonzero(self._center_reachable)
@@ -180,11 +176,9 @@ class CoverageMap:
     def blocked_mask(self) -> np.ndarray:
         """Cells the robot's centre must not enter.
 
-        That is every confirmed obstacle grown by the body radius, plus the
-        band along the walls where the body would not fit. Cells that are
-        merely UNKNOWN stay open: in an arena this size, refusing to enter
-        unseen space would stop the robot before it had seen anything. The
-        reactive layer is what keeps that optimism safe.
+        Confirmed obstacles grown by the body radius, plus the wall band. Merely
+        UNKNOWN cells stay open -- refusing to enter unseen space would stop the
+        robot before it had seen anything; the reactive layer keeps that safe.
         """
         blocked = _dilate(self.state == OCCUPIED, self._inflate_cells)
         blocked |= ~self._center_reachable
@@ -228,12 +222,10 @@ class CoverageMap:
         """
         blocked = self.blocked_mask()
         if blocked[start]:
-            # The robot has ended up somewhere the planner considers illegal --
-            # nudged into the wall band, say. Clearing just the start cell is
-            # not enough, because every neighbour is usually just as illegal
-            # and the search would die immediately; clear enough room around it
-            # to escape. This only ever fires when something has already gone
-            # wrong, and the reactive layer still guards the drive.
+            # The robot is somewhere the planner calls illegal -- nudged into
+            # the wall band, say. Clearing just the start cell is not enough:
+            # its neighbours are usually illegal too and the search would die
+            # at once, so clear enough room to escape.
             blocked = blocked.copy()
             row, col = start
             reach = self._inflate_cells + 1

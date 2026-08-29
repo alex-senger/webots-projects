@@ -2,24 +2,18 @@
 
 The robot sweeps the arena in boustrophedon lanes while building a 2 cm
 occupancy and coverage grid from its infra-red sensors, then falls back on
-breadth-first search to reach whatever the sweep missed. It is told the size of
-its arena and nothing else: the three wooden boxes and the walls are all
-discovered by touch.
+breadth-first search to reach whatever the sweep missed. It is told the size
+of its arena and nothing else: the boxes and walls are discovered by touch.
 
 Layers, bottom-up:
 
-1. **Odometry** -- dead reckoning from the wheel encoders, re-anchored to
-   ground truth every MOCAP_INTERVAL seconds in the manner of an overhead
-   motion-capture rig. Set MOCAP_INTERVAL = 0 to watch pure dead reckoning
-   smear the map instead.
-2. **Mapping** -- each IR reading is converted to a distance through the
-   sensor's own lookup table and projected into the grid: free along the ray,
-   occupied at its end once seen twice.
-3. **Planning** -- lanes first, then BFS to the nearest cell that would sweep
-   new ground.
-4. **Reactive control** -- a repulsive potential field with a tangential term
-   blends into the waypoint bearing, so the robot slides along an obstacle
-   rather than stalling against it, backed by a stall detector.
+1. Odometry -- wheel encoders, re-anchored to ground truth every
+   MOCAP_INTERVAL_S. Set it to 0 to watch pure dead reckoning smear the map.
+2. Mapping -- IR readings through the sensor's own lookup table: free along
+   the ray, occupied at its end once seen twice.
+3. Planning -- lanes first, then BFS to the nearest uncovered cell.
+4. Reactive control -- a repulsive field with a tangential term, so the robot
+   slides along an obstacle instead of stalling against it.
 """
 
 import sys
@@ -42,29 +36,17 @@ TIME_STEP = 32  # ms; twice the world's basic step, plenty for this control rate
 
 # ---- arena and map ----
 CELL_SIZE_M = 0.02
-# A tiny margin below the body-radius limit: a waypoint placed exactly at the
-# reachable boundary quantizes into a grid cell whose *centre* sits just
-# beyond it, so CoverageMap.blocked_mask() marks the whole outer band -- and
-# every lane's start/end point -- unreachable from the very first step.
-# Verified by probing blocked_mask() directly: margin 0.0 leaves 34/34 lane
-# points unreachable, margin >= 0.005 leaves 0/34. The margin also shrinks the
-# robot-centre reach, so its footprint stops 1 mm short of the physical wall
-# per mm of margin (area = 1-(1-2*margin)^2, negligible at this size) -- kept
-# at 0.006 m rather than a full cell to keep that loss under 2.5% of the
-# arena.
+# The margin is load-bearing: a waypoint exactly at the reachable boundary
+# falls in a cell whose *centre* lies outside it, which blocked_mask() reads
+# as unreachable -- taking every lane endpoint with it.
 CENTER_LIMIT_M = epuck.ARENA_HALF_M - epuck.BODY_RADIUS_M - 0.006  # 0.457
-# Tighter spacings (0.04/0.045) lost more to lane-transition corner-cutting
-# than they gained in overlap; 0.06 left visible gaps. 0.05 was the empirical
-# optimum over 13 tuning runs, and the relationship is non-monotonic.
-LANE_SPACING_M = 0.05  # tighter than the 7.4 cm body, so lanes overlap
+LANE_SPACING_M = 0.05  # under the 7.4 cm body so lanes overlap; beat 0.04 and 0.06
 
 # ---- motion ----
 CRUISE_SPEED = 0.09  # m/s, about 70% of what the motors can do
 K_HEADING = 4.0
 OMEGA_MAX = 4.0
-# 0.03 cut corners at lane ends; 0.01 caused waypoint timeouts. Tuned
-# empirically alongside LANE_SPACING_M over the same 13 runs.
-WAYPOINT_TOLERANCE_M = 0.015
+WAYPOINT_TOLERANCE_M = 0.015  # 0.03 cut corners at lane ends, 0.01 timed out
 REPULSION_GAIN = 1.2
 REPULSION_ALPHA = 0.4  # exponential smoothing, damps limit cycles
 FRONT_BRAKE = 0.8  # how hard a near obstacle slows the robot
@@ -140,10 +122,8 @@ class Roomba:
     def sense(self) -> tuple[list[float], tuple[float, float, float]]:
         """Update the pose and the map.
 
-        Returns the ring of IR distances and the repulsion triple
-        (field x, field y, front proximity) derived from it. The triple is
-        computed once here and handed to the steering, rather than being
-        recomputed there from the same distances.
+        Returns the IR distances and the repulsion triple (field x, field y,
+        front proximity), computed once here and handed to the steering.
         """
         pose = self.odom.update(
             self.dev.left_encoder.getValue(), self.dev.right_encoder.getValue()
@@ -169,10 +149,8 @@ class Roomba:
 
         self.map.stamp_covered(pose.x, pose.y)
         for index, distance in enumerate(distances):
-            # The ray only ever reaches as far as the sensor actually saw:
-            # `raw_to_distance` already saturates at IR_MAX_RANGE_M when there
-            # is nothing in range, so extending a genuine 6 cm reading to 7 cm
-            # would clear cells that demonstrably hold something.
+            # read_distances already saturates at max range, so the ray never
+            # over-reaches and clears cells that hold something.
             hit = distance < epuck.IR_MAP_TRUST_RANGE_M
             origin, endpoint = perception.sensor_ray(pose, index, distance)
             self.map.mark_ray(origin, endpoint, hit)
@@ -209,13 +187,8 @@ class Roomba:
     def gap_fill_target(self, pose: Pose) -> tuple[float, float] | None:
         """Next waypoint on the way to the closest cell still worth sweeping.
 
-        The queued path is thrown away, and a fresh one planned, whenever it
-        runs out *or* its next waypoint has just become blocked -- a box
-        discovered since the plan was made inflates over the cells around it,
-        and steering at a waypoint inside that inflation would drive the robot
-        straight at the thing it just found. Checking only the head of the
-        queue is enough: every later waypoint gets the same test on the step
-        it becomes the head.
+        The queued path is replanned when it empties or when its head becomes
+        blocked, so a box discovered since planning cannot be steered into.
         """
         blocked = self.map.blocked_mask()
         if self.path:
@@ -267,9 +240,7 @@ class Roomba:
             math.atan2(target[1] - pose.y, target[0] - pose.x) - pose.theta
         )
 
-        # Exponential smoothing lives here rather than in the library: it is
-        # per-step state belonging to this control loop, and the escape
-        # manoeuvre resets it.
+        # Smoothing is per-loop state (the escape resets it), so it lives here.
         self.field[0] += REPULSION_ALPHA * (repel_x - self.field[0])
         self.field[1] += REPULSION_ALPHA * (repel_y - self.field[1])
 
@@ -292,10 +263,7 @@ class Roomba:
             return False
 
         if self.stall.fired:
-            # Flag the manoeuvre in the trace so a backing-out wiggle is
-            # distinguishable from ordinary driving. DONE is terminal and must
-            # never be overwritten -- run() short-circuits before we get here,
-            # but the guard keeps that a local property.
+            # Flag the manoeuvre in the trace. DONE is terminal, never overwritten.
             if self.mode != "DONE":
                 self.mode_before_escape = self.mode
                 self.mode = "ESCAPE"
@@ -361,10 +329,8 @@ class Roomba:
         )
         self.trace.close()
 
-        # Tear the simulation down, so `webots --batch --mode=fast` returns
-        # instead of spinning forever on a robot that is already parked. The
-        # quit only takes effect at the next step boundary, so the DONE guard
-        # in run() still has to hold the motors at zero until then.
+        # Lets `webots --batch` return instead of spinning on a parked robot.
+        # Takes effect at the next step boundary, so run()'s DONE guard still holds.
         self.robot.simulationQuit(0)
 
     def record(self, pose: Pose) -> None:

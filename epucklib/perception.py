@@ -70,17 +70,14 @@ def repulsion(
 ) -> tuple[float, float, float]:
     """Repulsive field in the robot frame, plus a front-proximity factor.
 
-    Each sensor with something in range pushes the robot back along its own
-    axis, with a strength rising from 0 at maximum range to 1 at contact. The
-    four forward sensors add a tangential 'vortex' term -- the radial push
-    turned 90 degrees away from that sensor's side -- so the robot slides
-    around an obstacle instead of oscillating in front of it, which is the
-    classic cure for the head-on local minimum of a purely radial field.
+    Each sensor in range pushes back along its own axis, strength rising from
+    0 at maximum range to 1 at contact. The four forward sensors add a
+    tangential "vortex" term -- the radial push turned 90 degrees away from
+    that sensor's side -- so the robot slides around an obstacle rather than
+    oscillating in front of it, the classic cure for the head-on local minimum.
 
-    A perfectly symmetric head-on obstacle still cancels the tangential terms
-    and leaves a pure backward push; the caller is expected to break that tie
-    (the controller nudges toward the side its waypoint is on) and the stall
-    detector catches whatever slips through.
+    A symmetric head-on obstacle still cancels the tangential terms; the caller
+    breaks that tie (see `blend_command`).
     """
     force_x = force_y = front = 0.0
     for index, distance in enumerate(distances):

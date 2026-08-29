@@ -65,17 +65,13 @@ def blend_command(
 ) -> float:
     """Heading error that goes toward the target while avoiding what is near.
 
-    The bearing to the target becomes a unit "attract" vector in the robot
-    frame; the (already smoothed) repulsive field from `perception.repulsion`
-    is added to it with `repulsion_gain`, and the direction of the sum is the
-    heading the robot should steer to.
+    The target bearing becomes a unit attract vector; the smoothed repulsive
+    field is added with `repulsion_gain`, and the sum's direction is the
+    heading to steer.
 
-    A perfectly head-on obstacle cancels the field's tangential term and leaves
-    nothing but a backward push, so attract and repel end up collinear and the
-    robot has no reason to prefer either side. `front` above 0.5 with almost no
-    lateral command left is exactly that situation: break the tie toward
-    whichever side the target is on, so the robot commits to going round rather
-    than stalling nose-first.
+    A head-on obstacle cancels the field's tangential term, leaving attract and
+    repel collinear with no reason to prefer either side. The tie-break spots
+    that case and commits to whichever side the target is on.
     """
     attract_x, attract_y = math.cos(bearing), math.sin(bearing)
 
@@ -91,15 +87,10 @@ def blend_command(
 class StallDetector:
     """Notices that the robot has stopped moving, and runs an escape manoeuvre.
 
-    `update` is the whole state machine. Feed it how far the robot translated
-    on the last step and the current ring of IR distances; it counts steps
-    without translation, and once they exceed `stall_steps` it picks a turn
-    direction and starts an escape lasting `escape_steps` further steps.
-
-    It returns the turn rate to reverse with for every step of that escape and
-    None once the robot is driving normally again. `fired` marks the single
-    step on which the escape started, which is the caller's cue to log it and
-    to throw away whatever state led into the trap.
+    `update` counts steps without translation and, past `stall_steps`, returns
+    a turn rate to reverse with for the next `escape_steps` steps (None while
+    driving normally). `fired` marks the step the escape began on -- the
+    caller's cue to log it and discard whatever state led into the trap.
     """
 
     def __init__(

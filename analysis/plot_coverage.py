@@ -55,10 +55,8 @@ def main():
 
     times, xs, ys, coverage, modes = load_trace(trace_path)
 
-    # Rebuild the run's grid geometry from the NPZ header and ask it which
-    # cells the footprint could ever have stamped, rather than reimplementing
-    # the rule here -- a fork of it would go quietly stale the moment the
-    # grid's geometry changed.
+    # Ask the grid itself which cells the footprint could reach; a fork of the
+    # rule here would go stale the moment the geometry changed.
     geometry = CoverageMap(
         half_extent_m=half, cell_size_m=cell_size, robot_radius_m=BODY_RADIUS_M
     )
