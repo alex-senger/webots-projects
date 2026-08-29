@@ -30,9 +30,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import math
 
+import numpy as np
 from controller import Supervisor
 
-from epucklib import control, devices, epuck, grid, perception, sweep
+from epucklib import control, devices, epuck, grid, perception, sweep, trace
 from epucklib.odometry import DeadReckoning, Pose
 
 CONTROLLER_NAME = "epuck_roomba"
@@ -52,12 +53,17 @@ CELL_SIZE_M = 0.02
 # at 0.006 m rather than a full cell to keep that loss under 2.5% of the
 # arena.
 CENTER_LIMIT_M = epuck.ARENA_HALF_M - epuck.BODY_RADIUS_M - 0.006  # 0.457
+# Tighter spacings (0.04/0.045) lost more to lane-transition corner-cutting
+# than they gained in overlap; 0.06 left visible gaps. 0.05 was the empirical
+# optimum over 13 tuning runs, and the relationship is non-monotonic.
 LANE_SPACING_M = 0.05  # tighter than the 7.4 cm body, so lanes overlap
 
 # ---- motion ----
 CRUISE_SPEED = 0.09  # m/s, about 70% of what the motors can do
 K_HEADING = 4.0
 OMEGA_MAX = 4.0
+# 0.03 cut corners at lane ends; 0.01 caused waypoint timeouts. Tuned
+# empirically alongside LANE_SPACING_M over the same 13 runs.
 WAYPOINT_TOLERANCE_M = 0.015
 REPULSION_GAIN = 1.2
 REPULSION_ALPHA = 0.4  # exponential smoothing, damps limit cycles
@@ -72,6 +78,14 @@ ESCAPE_STEPS = 20
 MOCAP_INTERVAL_S = 5.0  # 0 disables the ground-truth correction entirely
 REPORT_INTERVAL_S = 10.0
 LANE_TIMEOUT_S = 25.0  # give up on a waypoint the robot cannot reach
+TIME_BUDGET_S = 600.0  # hard stop, so a batch run always terminates
+PROGRESS_WINDOW_S = 60.0  # how long coverage may stagnate before giving up
+PROGRESS_MIN = 0.005  # 0.5 percentage points counts as progress
+
+TRACE_FIELDS = [
+    "t_s", "mode", "x", "y", "theta",
+    "gt_x", "gt_y", "drift_m", "coverage",
+]
 
 
 def ground_truth(node) -> Pose:
@@ -114,6 +128,13 @@ class Roomba:
 
         self.last_mocap = self.robot.getTime()
         self.last_report = 0.0
+
+        self.path: list[tuple[float, float]] = []  # pending gap-fill waypoints
+        self.trace = trace.CsvTrace(
+            trace.trace_path(CONTROLLER_NAME, REPO_ROOT), TRACE_FIELDS
+        )
+        self.best_coverage = 0.0
+        self.best_coverage_time = 0.0
 
     # ---- perception ----
 
@@ -177,6 +198,37 @@ class Roomba:
         print(f"sweep finished at t={now:.1f}s", flush=True)
         self.mode = "GAP_FILL"
         return None
+
+    def gap_fill_target(self, pose: Pose):
+        """Next waypoint on the way to the closest cell still worth sweeping.
+
+        The path is replanned whenever the queue empties, which happens both on
+        arrival and whenever a newly discovered obstacle makes the current plan
+        invalid -- so the map and the plan never drift far apart.
+        """
+        while self.path:
+            x, y = self.path[0]
+            if math.hypot(x - pose.x, y - pose.y) < WAYPOINT_TOLERANCE_M:
+                self.path.pop(0)
+                continue
+            return (x, y)
+
+        start = self.map.world_to_cell(pose.x, pose.y)
+        if start is None:
+            self.finish("robot left the arena")
+            return None
+
+        cells = self.map.nearest_uncovered(start)
+        if cells is None:
+            self.finish("nothing reachable left to cover")
+            return None
+
+        # The first cell is where the robot already stands, so drop it.
+        self.path = [self.map.cell_center(*cell) for cell in self.map.shortcut(cells)[1:]]
+        if not self.path:
+            self.finish("nothing reachable left to cover")
+            return None
+        return self.path[0]
 
     # ---- actuation ----
 
@@ -254,25 +306,85 @@ class Roomba:
             flush=True,
         )
 
+    def check_progress(self) -> None:
+        """Stop if coverage has stalled or the time budget has run out."""
+        now = self.robot.getTime()
+        fraction = self.map.coverage_fraction()
+        if fraction > self.best_coverage + PROGRESS_MIN:
+            self.best_coverage = fraction
+            self.best_coverage_time = now
+        elif now - self.best_coverage_time > PROGRESS_WINDOW_S:
+            self.finish(f"no progress for {PROGRESS_WINDOW_S:.0f}s")
+        if now > TIME_BUDGET_S:
+            self.finish(f"time budget of {TIME_BUDGET_S:.0f}s reached")
+
+    def finish(self, reason: str) -> None:
+        """Stop the robot, write the map, and print the summary."""
+        if self.mode == "DONE":
+            return
+        self.mode = "DONE"
+        self.drive(0.0, 0.0)
+
+        covered, coverable = self.map.coverage_counts()
+        area = covered * self.map.cell * self.map.cell
+        print(
+            f"\n=== coverage complete: {reason} ===\n"
+            f"    time      {self.robot.getTime():.1f} s\n"
+            f"    coverage  {100.0 * covered / coverable:.1f}% "
+            f"({covered}/{coverable} cells, {area:.3f} m^2)\n"
+            f"    obstacles {(self.map.state == grid.OCCUPIED).sum()} cells discovered",
+            flush=True,
+        )
+
+        np.savez_compressed(
+            REPO_ROOT / "analysis" / "traces" / f"{CONTROLLER_NAME}_map.npz",
+            covered=self.map.covered,
+            state=self.map.state,
+            cell_size_m=self.map.cell,
+            half_extent_m=self.map.half,
+        )
+        self.trace.close()
+
+    def record(self, pose: Pose) -> None:
+        truth = ground_truth(self.node)
+        self.trace.write(
+            t_s=f"{self.robot.getTime():.3f}",
+            mode=self.mode,
+            x=f"{pose.x:.4f}",
+            y=f"{pose.y:.4f}",
+            theta=f"{pose.theta:.4f}",
+            gt_x=f"{truth.x:.4f}",
+            gt_y=f"{truth.y:.4f}",
+            drift_m=f"{math.hypot(truth.x - pose.x, truth.y - pose.y):.4f}",
+            coverage=f"{self.map.coverage_fraction():.4f}",
+        )
+
     # ---- main loop ----
 
     def run(self) -> None:
         while self.robot.step(TIME_STEP) != -1:
             distances, front = self.sense()
+            pose = self.odom.pose
+            self.record(pose)
             self.report()
 
-            # Stall recovery only makes sense while the robot is trying to
-            # get somewhere. Once SWEEP hands off to GAP_FILL (not yet
-            # implemented -- Task 11), the robot is deliberately parked with
-            # zero velocity; without this guard handle_stall sees that zero
-            # velocity as a stall forever and the robot backs out and turns
-            # in an endless loop instead of the "sits still" behaviour this
-            # task's brief calls for.
-            if self.mode == "SWEEP" and self.handle_stall(distances):
+            if self.mode == "DONE":
+                self.drive(0.0, 0.0)
                 continue
 
-            pose = self.odom.pose
-            target = self.sweep_target(pose) if self.mode == "SWEEP" else None
+            self.check_progress()
+            if self.mode == "DONE":
+                self.drive(0.0, 0.0)
+                continue
+
+            if self.handle_stall(distances):
+                continue
+
+            if self.mode == "SWEEP":
+                target = self.sweep_target(pose)
+            else:
+                target = self.gap_fill_target(pose)
+
             if target is None:
                 self.drive(0.0, 0.0)
                 continue
