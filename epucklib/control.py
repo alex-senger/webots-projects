@@ -1,8 +1,15 @@
 """Unicycle motion control for the differential-drive e-puck."""
 
 import math
+from collections.abc import Sequence
 
-from epucklib.epuck import AXLE_LENGTH_M, MAX_WHEEL_SPEED, WHEEL_RADIUS_M
+from epucklib.epuck import (
+    AXLE_LENGTH_M,
+    LEFT_SENSORS,
+    MAX_WHEEL_SPEED,
+    RIGHT_SENSORS,
+    WHEEL_RADIUS_M,
+)
 
 
 def wrap_angle(angle: float) -> float:
@@ -47,3 +54,100 @@ def go_to_point(
     v = cruise_speed * max(math.cos(heading_error), 0.0) * slowdown
     omega = max(-omega_max, min(omega_max, k_heading * heading_error))
     return v, omega
+
+
+def blend_command(
+    bearing: float,
+    field_x: float,
+    field_y: float,
+    front: float,
+    repulsion_gain: float,
+) -> float:
+    """Heading error that goes toward the target while avoiding what is near.
+
+    The bearing to the target becomes a unit "attract" vector in the robot
+    frame; the (already smoothed) repulsive field from `perception.repulsion`
+    is added to it with `repulsion_gain`, and the direction of the sum is the
+    heading the robot should steer to.
+
+    A perfectly head-on obstacle cancels the field's tangential term and leaves
+    nothing but a backward push, so attract and repel end up collinear and the
+    robot has no reason to prefer either side. `front` above 0.5 with almost no
+    lateral command left is exactly that situation: break the tie toward
+    whichever side the target is on, so the robot commits to going round rather
+    than stalling nose-first.
+    """
+    attract_x, attract_y = math.cos(bearing), math.sin(bearing)
+
+    command_x = attract_x + repulsion_gain * field_x
+    command_y = attract_y + repulsion_gain * field_y
+
+    if front > 0.5 and abs(command_y) < 0.1:
+        command_y += math.copysign(0.5, bearing if bearing != 0.0 else 1.0)
+
+    return math.atan2(command_y, command_x)
+
+
+class StallDetector:
+    """Notices that the robot has stopped moving, and runs an escape manoeuvre.
+
+    `update` is the whole state machine. Feed it how far the robot translated
+    on the last step and the current ring of IR distances; it counts steps
+    without translation, and once they exceed `stall_steps` it picks a turn
+    direction and starts an escape lasting `escape_steps` further steps.
+
+    It returns the turn rate to reverse with for every step of that escape and
+    None once the robot is driving normally again. `fired` marks the single
+    step on which the escape started, which is the caller's cue to log it and
+    to throw away whatever state led into the trap.
+    """
+
+    def __init__(
+        self,
+        stall_speed_m: float,
+        stall_steps: int,
+        escape_steps: int,
+        turn_rate: float = 1.5,
+    ) -> None:
+        self.stall_speed_m = stall_speed_m
+        self.stall_steps = stall_steps
+        self.escape_steps = escape_steps
+        self.turn_rate = turn_rate
+
+        self.turn = 0.0
+        self.fired = False
+        self._stalled = 0
+        self._remaining = 0
+
+    @property
+    def escaping(self) -> bool:
+        """Is an escape manoeuvre still running?"""
+        return self._remaining > 0
+
+    def update(self, step_ds: float, distances: Sequence[float]) -> float | None:
+        """Advance one control step; see the class docstring."""
+        self.fired = False
+
+        if self._remaining > 0:
+            self._remaining -= 1
+            return self.turn
+
+        if abs(step_ds) < self.stall_speed_m:
+            self._stalled += 1
+        else:
+            self._stalled = 0
+
+        if self._stalled <= self.stall_steps:
+            return None
+
+        self._stalled = 0
+        self._remaining = self.escape_steps
+        self.turn = self.escape_direction(distances)
+        self.fired = True
+        return self.turn
+
+    def escape_direction(self, distances: Sequence[float]) -> float:
+        """Turn toward whichever side has more room as the robot reverses."""
+        left_room = sum(distances[index] for index in LEFT_SENSORS)
+        right_room = sum(distances[index] for index in RIGHT_SENSORS)
+        return self.turn_rate if left_room > right_room else -self.turn_rate

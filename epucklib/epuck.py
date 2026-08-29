@@ -57,3 +57,8 @@ SENSOR_ANGLES_RAD: tuple[float, ...] = (
 
 # The four sensors looking into the forward hemisphere.
 FRONT_SENSORS: tuple[int, ...] = (0, 1, 6, 7)
+
+# The forward-left and forward-right pairs, used to decide which way to turn
+# when the robot has to back out of something.
+LEFT_SENSORS: tuple[int, ...] = (5, 6)
+RIGHT_SENSORS: tuple[int, ...] = (1, 2)
