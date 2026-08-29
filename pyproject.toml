@@ -8,10 +8,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy>=2.0",
-]
-
-[dependency-groups]
-dev = [
-    "matplotlib>=3.9",
+    "numpy>=2.2.6",
+    "ikpy>=4.0.0",
+    "matplotlib>=3.10.9",
 ]
