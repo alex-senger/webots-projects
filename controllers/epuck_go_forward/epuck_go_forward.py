@@ -1,8 +1,8 @@
 from controller import Robot
 
-TIME_STEP = 64
+TIME_STEP: int = 64
 
-MAX_SPEED = 6.28
+MAX_SPEED: float = 6.28
 
 # create the Robot instance.
 robot = Robot()
