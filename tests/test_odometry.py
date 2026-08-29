@@ -3,7 +3,7 @@ import math
 import pytest
 
 from epucklib import epuck
-from epucklib.odometry import DeadReckoning, Pose, integrate_distance
+from epucklib.odometry import DeadReckoning, Pose
 
 R = epuck.WHEEL_RADIUS_M
 L = epuck.AXLE_LENGTH_M
@@ -127,12 +127,3 @@ def test_a_starting_pose_can_be_supplied():
     pose = odom.update(turn, turn)
     assert pose.x == pytest.approx(1.0)
     assert pose.y == pytest.approx(2.1)
-
-
-def test_integrate_distance_ignores_direction():
-    forward = integrate_distance(1.0, 1.0, 1.0)
-    backward = integrate_distance(-1.0, -1.0, 1.0)
-    assert forward == pytest.approx(backward)
-    assert forward == pytest.approx(R)
-    # Spinning on the spot covers no ground.
-    assert integrate_distance(-1.0, 1.0, 1.0) == pytest.approx(0.0)

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from epucklib.epuck import MAX_WHEEL_SPEED, PS_NAMES
+from epucklib.epuck import PS_NAMES
 
 
 @dataclass
@@ -54,8 +54,3 @@ def setup(robot, timestep: int | None = None) -> EpuckDevices:
         left_encoder=left_encoder,
         right_encoder=right_encoder,
     )
-
-
-def clamp_speed(value: float) -> float:
-    """Limit a wheel speed to the e-puck's physical maximum."""
-    return max(-MAX_WHEEL_SPEED, min(MAX_WHEEL_SPEED, value))

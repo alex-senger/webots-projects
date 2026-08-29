@@ -110,10 +110,6 @@ COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
   are that out-of-reach ring and 12 of the remaining 14 are these interior
   specks, which puts the robot's true miss count at 2 cells.
 
-- **Switching demos.** `epuck_go_forward`, `epuck_braitenberg` and
-  `epuck_roomba` all share `worlds/epuck.wbt`, so running a different one
-  means changing the `controller` field on the robot in that world.
-
 ## Tests
 
 The logic in `epucklib/` never imports the Webots `controller` module, so it

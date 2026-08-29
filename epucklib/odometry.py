@@ -52,20 +52,3 @@ class DeadReckoning:
         )
         self.step_ds = ds
         return self.pose
-
-
-def wheel_speeds_to_twist(left_rad_s: float, right_rad_s: float) -> tuple[float, float]:
-    """Convert wheel angular velocities (rad/s) to (linear m/s, angular rad/s)."""
-    v_left = left_rad_s * WHEEL_RADIUS_M
-    v_right = right_rad_s * WHEEL_RADIUS_M
-    return (v_left + v_right) / 2.0, (v_right - v_left) / AXLE_LENGTH_M
-
-
-def integrate_distance(left_rad_s: float, right_rad_s: float, dt_s: float) -> float:
-    """Path length covered in dt_s.
-
-    Absolute value, so reversing adds to the distance travelled rather than
-    subtracting from it; a robot spinning on the spot covers no ground.
-    """
-    linear, _ = wheel_speeds_to_twist(left_rad_s, right_rad_s)
-    return abs(linear) * dt_s
