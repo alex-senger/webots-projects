@@ -28,6 +28,29 @@ def _disk_offsets(radius_m: float, cell_size_m: float) -> list[tuple[int, int]]:
     return offsets
 
 
+def _dilate(mask: np.ndarray, radius_cells: int) -> np.ndarray:
+    """Grow a boolean mask by a disk of `radius_cells`.
+
+    A hand-rolled binary dilation by array shifts: scipy would do this in one
+    call, but it is not a dependency of this project and the grid is 50x50.
+    """
+    grown = mask.copy()
+    rows, cols = mask.shape
+    for d_row in range(-radius_cells, radius_cells + 1):
+        for d_col in range(-radius_cells, radius_cells + 1):
+            if d_row * d_row + d_col * d_col > radius_cells * radius_cells:
+                continue
+            shifted = np.zeros_like(mask)
+            row_start, row_stop = max(0, d_row), min(rows, rows + d_row)
+            col_start, col_stop = max(0, d_col), min(cols, cols + d_col)
+            shifted[row_start:row_stop, col_start:col_stop] = mask[
+                row_start - d_row : row_stop - d_row,
+                col_start - d_col : col_stop - d_col,
+            ]
+            grown |= shifted
+    return grown
+
+
 class CoverageMap:
     """What the robot knows about the floor, and how much of it it has swept."""
 
@@ -53,6 +76,17 @@ class CoverageMap:
         self._hits_to_occupy = hits_to_occupy
 
         self._disk = _disk_offsets(robot_radius_m, cell_size_m)
+
+        # How far a discovered obstacle must be grown so that a path planned
+        # for a point robot still clears the body.
+        self._inflate_cells = int(math.ceil(robot_radius_m / cell_size_m))
+
+        # Cells whose centre the robot's own centre could ever occupy: closer
+        # to the wall than the body radius simply does not fit.
+        limit = half_extent_m - robot_radius_m
+        centers = (np.arange(self.n) + 0.5) * cell_size_m - half_extent_m
+        in_reach = np.abs(centers) <= limit
+        self._center_reachable = np.outer(in_reach, in_reach)
 
     # ---- geometry ----
 
@@ -90,6 +124,49 @@ class CoverageMap:
                 self.covered[row, col] = True
                 if self.state[row, col] == UNKNOWN:
                     self.state[row, col] = FREE
+
+    def mark_ray(self, origin, endpoint, hit: bool) -> None:
+        """Record one sensor ray: free along its length, maybe occupied at its end.
+
+        Cells are only ever promoted out of UNKNOWN here, so free space seen
+        through a doorway cannot later erase an obstacle seen head-on.
+        """
+        origin_x, origin_y = origin
+        end_x, end_y = endpoint
+        length = math.hypot(end_x - origin_x, end_y - origin_y)
+
+        # Half-cell steps guarantee no cell along the ray is stepped over.
+        steps = max(1, int(length / (self.cell * 0.5)))
+        for index in range(steps):  # deliberately excludes the endpoint
+            fraction = index / steps
+            cell = self.world_to_cell(
+                origin_x + fraction * (end_x - origin_x),
+                origin_y + fraction * (end_y - origin_y),
+            )
+            if cell is not None and self.state[cell] == UNKNOWN:
+                self.state[cell] = FREE
+
+        if not hit:
+            return
+        cell = self.world_to_cell(end_x, end_y)
+        if cell is None:
+            return
+        self._hits[cell] += 1
+        if self._hits[cell] >= self._hits_to_occupy:
+            self.state[cell] = OCCUPIED
+
+    def blocked_mask(self) -> np.ndarray:
+        """Cells the robot's centre must not enter.
+
+        That is every confirmed obstacle grown by the body radius, plus the
+        band along the walls where the body would not fit. Cells that are
+        merely UNKNOWN stay open: in an arena this size, refusing to enter
+        unseen space would stop the robot before it had seen anything. The
+        reactive layer is what keeps that optimism safe.
+        """
+        blocked = _dilate(self.state == OCCUPIED, self._inflate_cells)
+        blocked |= ~self._center_reachable
+        return blocked
 
     # ---- reporting ----
 

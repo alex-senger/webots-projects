@@ -96,3 +96,94 @@ def test_a_fully_blocked_map_reports_zero_rather_than_dividing_by_zero():
     grid = make_map()
     grid.state[:, :] = OCCUPIED
     assert grid.coverage_fraction() == 0.0
+
+
+def test_a_ray_that_hits_nothing_only_clears_free_space():
+    grid = make_map()
+    grid.mark_ray((0.0, 0.0), (0.0, 0.1), hit=False)
+    assert (grid.state == OCCUPIED).sum() == 0
+    assert (grid.state == FREE).sum() > 0
+    # The cells along the ray, but not beyond its end.
+    assert grid.state[25, 25] == FREE
+    assert grid.state[29, 25] == FREE
+    assert grid.state[40, 25] == UNKNOWN
+
+
+def test_one_sighting_is_not_enough_to_believe_an_obstacle():
+    grid = make_map()
+    grid.mark_ray((0.0, 0.0), (0.0, 0.1), hit=True)
+    assert (grid.state == OCCUPIED).sum() == 0
+
+
+def test_a_second_sighting_confirms_the_obstacle():
+    grid = make_map()
+    for _ in range(2):
+        grid.mark_ray((0.0, 0.0), (0.0, 0.1), hit=True)
+    assert grid.state[grid.world_to_cell(0.0, 0.1)] == OCCUPIED
+
+
+def test_a_confirmed_obstacle_survives_later_free_rays():
+    grid = make_map()
+    for _ in range(2):
+        grid.mark_ray((0.0, 0.0), (0.0, 0.1), hit=True)
+    obstacle = grid.world_to_cell(0.0, 0.1)
+    grid.mark_ray((0.0, 0.0), (0.0, 0.3), hit=False)
+    assert grid.state[obstacle] == OCCUPIED
+
+
+def test_a_ray_leaving_the_arena_is_ignored_rather_than_wrapping():
+    grid = make_map()
+    grid.mark_ray((0.49, 0.0), (0.60, 0.0), hit=True)
+    assert (grid.state == OCCUPIED).sum() == 0
+
+
+def test_dilate_grows_a_single_cell_into_a_disk():
+    from epucklib.grid import _dilate
+
+    mask = np.zeros((11, 11), dtype=bool)
+    mask[5, 5] = True
+    grown = _dilate(mask, 2)
+    assert grown[5, 5]
+    assert grown[3, 5] and grown[7, 5] and grown[5, 3] and grown[5, 7]
+    assert grown[4, 4]  # diagonal neighbour, within radius 2
+    assert not grown[3, 3]  # 2.83 cells away, outside radius 2
+    assert not grown[8, 5]
+
+
+def test_dilate_near_an_edge_does_not_wrap_around():
+    from epucklib.grid import _dilate
+
+    mask = np.zeros((11, 11), dtype=bool)
+    mask[0, 0] = True
+    grown = _dilate(mask, 2)
+    assert grown[0, 0] and grown[2, 0] and grown[0, 2]
+    assert not grown[10, 10]
+    assert not grown[10, 0]
+
+
+def test_the_border_is_blocked_because_the_body_will_not_fit():
+    grid = make_map()
+    blocked = grid.blocked_mask()
+    # The robot centre cannot come closer than 3.7 cm to the wall at 0.5 m.
+    assert blocked[0, 0]
+    assert blocked[25, 0]
+    assert not blocked[25, 25]
+
+
+def test_a_discovered_obstacle_is_inflated_by_the_body_radius():
+    grid = make_map()
+    for _ in range(2):
+        grid.mark_ray((0.0, 0.0), (0.0, 0.1), hit=True)
+    obstacle_row, obstacle_col = grid.world_to_cell(0.0, 0.1)
+    blocked = grid.blocked_mask()
+    assert blocked[obstacle_row, obstacle_col]
+    # 3.7 cm of body over 2 cm cells inflates by two cells.
+    assert blocked[obstacle_row, obstacle_col + 2]
+    assert not blocked[obstacle_row, obstacle_col + 4]
+
+
+def test_the_blocked_mask_is_a_fresh_array_each_time():
+    grid = make_map()
+    first = grid.blocked_mask()
+    first[25, 25] = True
+    assert not grid.blocked_mask()[25, 25]
