@@ -122,9 +122,8 @@ class Roomba:
         self.waypoint_deadline = self.robot.getTime() + LANE_TIMEOUT_S
 
         self.field = [0.0, 0.0]  # smoothed repulsion
-        self.stalled_steps = 0
-        self.escape_steps = 0
-        self.escape_turn = 0.0
+        self.stall = control.StallDetector(STALL_SPEED_M, STALL_STEPS, ESCAPE_STEPS)
+        self.mode_before_escape = self.mode
 
         self.last_mocap = self.robot.getTime()
         self.last_report = 0.0
@@ -138,8 +137,14 @@ class Roomba:
 
     # ---- perception ----
 
-    def sense(self) -> tuple[list[float], float]:
-        """Update the pose and the map; return IR distances and the front factor."""
+    def sense(self) -> tuple[list[float], tuple[float, float, float]]:
+        """Update the pose and the map.
+
+        Returns the ring of IR distances and the repulsion triple
+        (field x, field y, front proximity) derived from it. The triple is
+        computed once here and handed to the steering, rather than being
+        recomputed there from the same distances.
+        """
         pose = self.odom.update(
             self.dev.left_encoder.getValue(), self.dev.right_encoder.getValue()
         )
@@ -164,17 +169,19 @@ class Roomba:
 
         self.map.stamp_covered(pose.x, pose.y)
         for index, distance in enumerate(distances):
+            # The ray only ever reaches as far as the sensor actually saw:
+            # `raw_to_distance` already saturates at IR_MAX_RANGE_M when there
+            # is nothing in range, so extending a genuine 6 cm reading to 7 cm
+            # would clear cells that demonstrably hold something.
             hit = distance < epuck.IR_MAP_TRUST_RANGE_M
-            reach = distance if hit else epuck.IR_MAX_RANGE_M
-            origin, endpoint = perception.sensor_ray(pose, index, reach)
+            origin, endpoint = perception.sensor_ray(pose, index, distance)
             self.map.mark_ray(origin, endpoint, hit)
 
-        _, _, front = perception.repulsion(distances)
-        return distances, front
+        return distances, perception.repulsion(distances)
 
     # ---- planning ----
 
-    def sweep_target(self, pose: Pose):
+    def sweep_target(self, pose: Pose) -> tuple[float, float] | None:
         """Next lane waypoint, skipping ones that are done, blocked or hopeless."""
         blocked = self.map.blocked_mask()
         now = self.robot.getTime()
@@ -199,13 +206,23 @@ class Roomba:
         self.mode = "GAP_FILL"
         return None
 
-    def gap_fill_target(self, pose: Pose):
+    def gap_fill_target(self, pose: Pose) -> tuple[float, float] | None:
         """Next waypoint on the way to the closest cell still worth sweeping.
 
-        The path is replanned whenever the queue empties, which happens both on
-        arrival and whenever a newly discovered obstacle makes the current plan
-        invalid -- so the map and the plan never drift far apart.
+        The queued path is thrown away, and a fresh one planned, whenever it
+        runs out *or* its next waypoint has just become blocked -- a box
+        discovered since the plan was made inflates over the cells around it,
+        and steering at a waypoint inside that inflation would drive the robot
+        straight at the thing it just found. Checking only the head of the
+        queue is enough: every later waypoint gets the same test on the step
+        it becomes the head.
         """
+        blocked = self.map.blocked_mask()
+        if self.path:
+            cell = self.map.world_to_cell(*self.path[0])
+            if cell is None or blocked[cell]:
+                self.path.clear()
+
         while self.path:
             x, y = self.path[0]
             if math.hypot(x - pose.x, y - pose.y) < WAYPOINT_TOLERANCE_M:
@@ -237,27 +254,28 @@ class Roomba:
         self.dev.left_motor.setVelocity(left)
         self.dev.right_motor.setVelocity(right)
 
-    def steer_toward(self, pose: Pose, target, distances, front) -> None:
+    def steer_toward(
+        self,
+        pose: Pose,
+        target: tuple[float, float],
+        repulsion: tuple[float, float, float],
+    ) -> None:
         """Blend the bearing to the target with the repulsive field, then drive."""
+        repel_x, repel_y, front = repulsion
+
         bearing = control.wrap_angle(
             math.atan2(target[1] - pose.y, target[0] - pose.x) - pose.theta
         )
-        attract_x, attract_y = math.cos(bearing), math.sin(bearing)
 
-        repel_x, repel_y, _ = perception.repulsion(distances)
+        # Exponential smoothing lives here rather than in the library: it is
+        # per-step state belonging to this control loop, and the escape
+        # manoeuvre resets it.
         self.field[0] += REPULSION_ALPHA * (repel_x - self.field[0])
         self.field[1] += REPULSION_ALPHA * (repel_y - self.field[1])
 
-        command_x = attract_x + REPULSION_GAIN * self.field[0]
-        command_y = attract_y + REPULSION_GAIN * self.field[1]
-
-        # A perfectly head-on obstacle cancels the field's tangential term and
-        # leaves nothing but a backward push. Break the tie toward whichever
-        # side the target is on, so the robot commits to going round.
-        if front > 0.5 and abs(command_y) < 0.1:
-            command_y += math.copysign(0.5, bearing if bearing != 0.0 else 1.0)
-
-        error = math.atan2(command_y, command_x)
+        error = control.blend_command(
+            bearing, self.field[0], self.field[1], front, REPULSION_GAIN
+        )
         v, omega = control.go_to_point(
             error,
             CRUISE_SPEED,
@@ -267,29 +285,27 @@ class Roomba:
         )
         self.drive(v, omega)
 
-    def handle_stall(self, distances) -> bool:
+    def handle_stall(self, distances: list[float]) -> bool:
         """Back out of a trap. Returns True if the escape consumed this step."""
-        if self.escape_steps > 0:
-            self.escape_steps -= 1
-            self.drive(-0.5 * CRUISE_SPEED, self.escape_turn)
-            return True
-
-        if abs(self.odom.step_ds) < STALL_SPEED_M:
-            self.stalled_steps += 1
-        else:
-            self.stalled_steps = 0
-
-        if self.stalled_steps <= STALL_STEPS:
+        turn = self.stall.update(self.odom.step_ds, distances)
+        if turn is None:
             return False
 
-        self.stalled_steps = 0
-        self.escape_steps = ESCAPE_STEPS
-        # Turn toward whichever side has more room as we reverse.
-        left_room = distances[5] + distances[6]
-        right_room = distances[1] + distances[2]
-        self.escape_turn = 1.5 if left_room > right_room else -1.5
-        self.field = [0.0, 0.0]  # forget the field that led into the trap
-        print(f"stuck at t={self.robot.getTime():.1f}s - backing out", flush=True)
+        if self.stall.fired:
+            # Flag the manoeuvre in the trace so a backing-out wiggle is
+            # distinguishable from ordinary driving. DONE is terminal and must
+            # never be overwritten -- run() short-circuits before we get here,
+            # but the guard keeps that a local property.
+            if self.mode != "DONE":
+                self.mode_before_escape = self.mode
+                self.mode = "ESCAPE"
+            self.field = [0.0, 0.0]  # forget the field that led into the trap
+            print(f"stuck at t={self.robot.getTime():.1f}s - backing out", flush=True)
+            return True
+
+        self.drive(-0.5 * CRUISE_SPEED, turn)
+        if not self.stall.escaping and self.mode == "ESCAPE":
+            self.mode = self.mode_before_escape
         return True
 
     # ---- reporting ----
@@ -319,7 +335,7 @@ class Roomba:
             self.finish(f"time budget of {TIME_BUDGET_S:.0f}s reached")
 
     def finish(self, reason: str) -> None:
-        """Stop the robot, write the map, and print the summary."""
+        """Stop the robot, write the map, print the summary, and end the run."""
         if self.mode == "DONE":
             return
         self.mode = "DONE"
@@ -345,6 +361,12 @@ class Roomba:
         )
         self.trace.close()
 
+        # Tear the simulation down, so `webots --batch --mode=fast` returns
+        # instead of spinning forever on a robot that is already parked. The
+        # quit only takes effect at the next step boundary, so the DONE guard
+        # in run() still has to hold the motors at zero until then.
+        self.robot.simulationQuit(0)
+
     def record(self, pose: Pose) -> None:
         truth = ground_truth(self.node)
         self.trace.write(
@@ -363,7 +385,7 @@ class Roomba:
 
     def run(self) -> None:
         while self.robot.step(TIME_STEP) != -1:
-            distances, front = self.sense()
+            distances, repulsion = self.sense()
             pose = self.odom.pose
             self.record(pose)
             self.report()
@@ -389,7 +411,7 @@ class Roomba:
                 self.drive(0.0, 0.0)
                 continue
 
-            self.steer_toward(pose, target, distances, front)
+            self.steer_toward(pose, target, repulsion)
 
 
 if __name__ == "__main__":
