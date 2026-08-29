@@ -1,0 +1,17 @@
+[project]
+name = "webots-projects"
+version = "0.1.0"
+description = "Webots worlds, controllers, and resources for my robotics university course"
+readme = "README.md"
+authors = [
+    { name = "Alex Senger", email = "alex.senger@icloud.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.9",
+]

@@ -1,0 +1,45 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- uv / virtual environments ----
+.venv/
+venv/
+# uv.lock IS committed on purpose (reproducible course environment).
+
+# ---- Webots ----
+# Per-world editor state (viewpoint, panels) — machine-specific, not committed.
+*.wbproj
+worlds/.*.wbproj
+# Compiled C/C++ controllers and their build artifacts.
+controllers/**/build/
+controllers/**/*.o
+controllers/**/*.d
+libraries/**/build/
+# Native controller binaries live next to their source; keep sources, drop builds.
+*.so
+*.dylib
+
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ---- Agent / tooling state ----
+.claude-flow/
+.swarm/
+.hive-mind/
+
+# ---- Editors / IDEs ----
+.idea/
+.vscode/
+*.swp
+*~
