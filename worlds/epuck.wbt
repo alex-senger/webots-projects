@@ -10,8 +10,8 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.5773502691896257 0.5773502691896257 0.5773502691896257 2.0944
-  position -2.101868701557123e-05 -2.1018746447623897e-05 2.56667863637088
+  orientation 0.22189877196144667 -0.4755401877263327 -0.8512475931591268 5.2803178062521745
+  position -0.9631575283958698 -1.1920869672296894 0.8192845011884771
 }
 TexturedBackground {
 }
@@ -42,5 +42,6 @@ WoodenBox {
   mass 0.2
 }
 E-puck {
-  controller "epuck_go_forward"
+  controller "epuck_roomba"
+  supervisor TRUE
 }
