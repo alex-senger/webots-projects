@@ -46,18 +46,76 @@ COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
 4. A minimal controller using the shared helpers:
 
    ```python
+   import sys
+   from pathlib import Path
+
+   REPO_ROOT = Path(__file__).resolve().parents[2]
+   sys.path.insert(0, str(REPO_ROOT))
+
    from controller import Robot
-   from webots_projects import run
+
+   from epucklib import devices
 
    robot = Robot()
-   for step in run(robot):
+   dev = devices.setup(robot)
+   while robot.step(dev.timestep) != -1:
        pass  # read sensors, run logic, drive motors each time step
    ```
 
+## Exercises
+
+- **`worlds/epuck.wbt` + `controllers/epuck_roomba`** — systematic floor
+  coverage in the Tutorial 1 arena (three wooden boxes): a basic Roomba. The
+  robot is told the size of its arena and nothing else; the walls and boxes are
+  discovered by infra-red.
+
+  It sweeps the floor in boustrophedon lanes 5 cm apart while building a 2 cm
+  occupancy and coverage grid, then switches to breadth-first search toward the
+  nearest cell that would still sweep new ground, until nothing reachable is
+  left. Layers: wheel-encoder dead reckoning re-anchored to ground truth every
+  5 s through the supervisor API (`MOCAP_INTERVAL_S = 0` to watch pure dead
+  reckoning smear the map); IR readings converted to metric distances by
+  inverting the sensor's own `lookupTable`; a repulsive potential field with a
+  tangential term blended into the waypoint bearing; and a stall detector that
+  backs out of traps. Coverage progress goes to the console.
+
+  On its last measured run it covered 91.5% of the arena floor (99.3% of what
+  the coverage metric can represent — a one-cell ring around the border can
+  never be credited as swept, see below) and stopped at t≈358 s of simulated
+  time because nothing reachable remained.
+
+  Headless run:
+
+  ```bash
+  /Applications/Webots.app/Contents/MacOS/webots --batch --minimize \
+      --no-rendering --mode=fast --stdout --stderr worlds/epuck.wbt
+  ```
+
+  Then render the figure:
+
+  ```bash
+  uv run python analysis/plot_coverage.py
+  ```
+
+  ![coverage map](docs/figures/roomba_coverage.png)
+
+  The light grey border in the figure is not missed floor: the robot's centre
+  can never get within a body radius of the wall, so that outer ring is
+  structurally out of the coverage metric's reach rather than actually
+  unswept.
+
+## Tests
+
+The logic in `epucklib/` never imports the Webots `controller` module, so it
+runs under plain pytest:
+
+```bash
+uv run pytest
+```
+
 ## Dependencies
 
-- Runtime: `numpy` (see `pyproject.toml`).
-- Dev group: `matplotlib` for plotting/analysis — installed by `uv sync`,
-  skipped with `uv sync --no-dev`.
+- Runtime: `numpy`, `matplotlib` (see `pyproject.toml`).
+- Dev group: `pytest` — installed by `uv sync`, skipped with `uv sync --no-dev`.
 
 Add more with `uv add <package>` (or `uv add --dev <package>`).
