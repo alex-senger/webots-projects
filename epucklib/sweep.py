@@ -12,7 +12,7 @@ def lane_waypoints(limit_m: float, spacing_m: float) -> list[tuple[float, float]
 
     Lanes run parallel to the y axis and step along x. The lane count is
     rounded up so the true spacing is never wider than asked for, and the
-    outermost lanes land exactly on the limits -- otherwise the strips along
+    outermost lanes land exactly on the limits. Otherwise the strips along
     the walls would be left for the gap-filling phase to mop up.
     """
     span = 2.0 * limit_m

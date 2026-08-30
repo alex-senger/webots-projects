@@ -26,7 +26,7 @@ def wheel_speeds(v: float, omega: float) -> tuple[float, float]:
 
     If either wheel would exceed the motor limit both are rescaled by the same
     factor, which saturates the speed without distorting the commanded
-    curvature -- the robot still follows the arc it was asked for, just slower.
+    curvature. Therefore the robot still follows the arc it was asked for, just slower.
     """
     left = (v - omega * AXLE_LENGTH_M / 2.0) / WHEEL_RADIUS_M
     right = (v + omega * AXLE_LENGTH_M / 2.0) / WHEEL_RADIUS_M
@@ -89,7 +89,7 @@ class StallDetector:
 
     `update` counts steps without translation and, past `stall_steps`, returns
     a turn rate to reverse with for the next `escape_steps` steps (None while
-    driving normally). `fired` marks the step the escape began on -- the
+    driving normally). `fired` marks the step the escape began on which is the
     caller's cue to log it and discard whatever state led into the trap.
     """
 
@@ -116,7 +116,7 @@ class StallDetector:
         return self._remaining > 0
 
     def update(self, step_ds: float, distances: Sequence[float]) -> float | None:
-        """Advance one control step; see the class docstring."""
+        """Advance one control step"""
         self.fired = False
 
         if self._remaining > 0:

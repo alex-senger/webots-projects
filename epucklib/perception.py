@@ -1,9 +1,9 @@
 """Turning e-puck infra-red readings into geometry.
 
-The e-puck's proximity sensors report a raw number, not a distance. Rather
-than picking magic thresholds, this module inverts the very lookup table the
-simulator uses to produce those numbers, so a reading becomes a distance in
-metres and every downstream decision can be expressed in real units.
+The e-puck's proximity sensors report a raw number rather than a distance. This 
+module inverts the very lookup table the simulator uses to produce those numbers, 
+so a reading becomes a distance in metres and every downstream decision can be 
+expressed in real units.
 """
 
 import math
@@ -72,9 +72,9 @@ def repulsion(
 
     Each sensor in range pushes back along its own axis, strength rising from
     0 at maximum range to 1 at contact. The four forward sensors add a
-    tangential "vortex" term -- the radial push turned 90 degrees away from
-    that sensor's side -- so the robot slides around an obstacle rather than
-    oscillating in front of it, the classic cure for the head-on local minimum.
+    tangential "vortex" term. The radial push is turned 90 degrees away from
+    that sensor's side, so the robot slides around an obstacle rather than
+    oscillating in front of it.
 
     A symmetric head-on obstacle still cancels the tangential terms; the caller
     breaks that tie (see `blend_command`).

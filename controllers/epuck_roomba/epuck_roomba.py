@@ -1,4 +1,4 @@
-"""Systematic floor-coverage controller for the e-puck -- a basic Roomba.
+"""Systematic floor-coverage controller for the e-puck: a basic Roomba.
 
 The robot sweeps the arena in boustrophedon lanes while building a 2 cm
 occupancy and coverage grid from its infra-red sensors, then falls back on
@@ -7,12 +7,12 @@ of its arena and nothing else: the boxes and walls are discovered by touch.
 
 Layers, bottom-up:
 
-1. Odometry -- wheel encoders, re-anchored to ground truth every
+1. Odometry: wheel encoders, re-anchored to ground truth every
    MOCAP_INTERVAL_S. Set it to 0 to watch pure dead reckoning smear the map.
-2. Mapping -- IR readings through the sensor's own lookup table: free along
+2. Mapping: IR readings through the sensor's own lookup table: free along
    the ray, occupied at its end once seen twice.
-3. Planning -- lanes first, then BFS to the nearest uncovered cell.
-4. Reactive control -- a repulsive field with a tangential term, so the robot
+3. Planning: lanes first, then BFS to the nearest uncovered cell.
+4. Reactive control: a repulsive field with a tangential term, so the robot
    slides along an obstacle instead of stalling against it.
 """
 
@@ -32,15 +32,12 @@ from epucklib.odometry import DeadReckoning, Pose
 
 CONTROLLER_NAME = "epuck_roomba"
 
-TIME_STEP = 32  # ms; twice the world's basic step, plenty for this control rate
+TIME_STEP = 32  # ms; twice the world's basic step
 
 # ---- arena and map ----
 CELL_SIZE_M = 0.02
-# The margin is load-bearing: a waypoint exactly at the reachable boundary
-# falls in a cell whose *centre* lies outside it, which blocked_mask() reads
-# as unreachable -- taking every lane endpoint with it.
 CENTER_LIMIT_M = epuck.ARENA_HALF_M - epuck.BODY_RADIUS_M - 0.006  # 0.457
-LANE_SPACING_M = 0.05  # under the 7.4 cm body so lanes overlap; beat 0.04 and 0.06
+LANE_SPACING_M = 0.05  # under the 7.4 cm body so lanes overlap
 
 # ---- motion ----
 CRUISE_SPEED = 0.09  # m/s, about 70% of what the motors can do
@@ -57,7 +54,7 @@ STALL_STEPS = 78  # about 2.5 s without translating
 ESCAPE_STEPS = 20
 
 # ---- housekeeping ----
-MOCAP_INTERVAL_S = 5.0  # 0 disables the ground-truth correction entirely
+MOCAP_INTERVAL_S = 5.0
 REPORT_INTERVAL_S = 10.0
 LANE_TIMEOUT_S = 25.0  # give up on a waypoint the robot cannot reach
 TIME_BUDGET_S = 600.0  # hard stop, so a batch run always terminates
@@ -263,7 +260,7 @@ class Roomba:
             return False
 
         if self.stall.fired:
-            # Flag the manoeuvre in the trace. DONE is terminal, never overwritten.
+            # Flag the manoeuvre in the trace
             if self.mode != "DONE":
                 self.mode_before_escape = self.mode
                 self.mode = "ESCAPE"
@@ -330,7 +327,6 @@ class Roomba:
         self.trace.close()
 
         # Lets `webots --batch` return instead of spinning on a parked robot.
-        # Takes effect at the next step boundary, so run()'s DONE guard still holds.
         self.robot.simulationQuit(0)
 
     def record(self, pose: Pose) -> None:

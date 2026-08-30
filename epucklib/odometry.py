@@ -1,7 +1,4 @@
-"""Differential-drive kinematics and dead reckoning for the e-puck.
-
-Everything here takes plain numbers, so it can be exercised without Webots.
-"""
+"""Differential-drive kinematics and dead reckoning for the e-puck"""
 
 import math
 from dataclasses import dataclass
@@ -22,10 +19,10 @@ class Pose:
 class DeadReckoning:
     """Tracks a pose from wheel-encoder positions.
 
-    Encoder values are absolute wheel angles in radians, exactly what a Webots
-    `PositionSensor` on a wheel reports. Integration happens at the arc
-    midpoint, which is exact for constant-curvature motion between two samples
-    and markedly better than the naive Euler form over long runs.
+    Encoder values are absolute wheel angles in radians. 
+    Integration happens at the arc midpoint, which is exact for 
+    constant-curvature motion between two samples and markedly better 
+    than the naive Euler form over long runs.
     """
 
     def __init__(self, left_rad: float, right_rad: float, pose: Pose | None = None) -> None:

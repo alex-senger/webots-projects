@@ -31,11 +31,7 @@ def _disk_offsets(radius_m: float, cell_size_m: float) -> list[tuple[int, int]]:
 
 
 def _dilate(mask: np.ndarray, radius_cells: int) -> np.ndarray:
-    """Grow a boolean mask by a disk of `radius_cells`.
-
-    A hand-rolled binary dilation by array shifts: scipy would do this in one
-    call, but it is not a dependency of this project and the grid is 50x50.
-    """
+    """Grow a boolean mask by a disk of `radius_cells`"""
     grown = mask.copy()
     rows, cols = mask.shape
     for d_row in range(-radius_cells, radius_cells + 1):
@@ -72,8 +68,7 @@ class CoverageMap:
         self.state = np.full((self.n, self.n), UNKNOWN, dtype=np.int8)
 
         # An obstacle must be seen twice before it is believed, which throws
-        # away the occasional spurious IR spike without needing a full
-        # log-odds model.
+        # away the occasional spurious IR spike
         self._hits = np.zeros((self.n, self.n), dtype=np.int16)
         self._hits_to_occupy = hits_to_occupy
 
@@ -129,7 +124,7 @@ class CoverageMap:
         """Mark the robot's footprint at (x, y) as covered, and as free space.
 
         The robot is standing there, so those cells demonstrably hold no
-        obstacle -- but a cell already believed occupied is never downgraded,
+        obstacle, but a cell already believed occupied is never downgraded,
         because a grazing footprint should not erase a box.
         """
         center = self.world_to_cell(x, y)
@@ -177,7 +172,7 @@ class CoverageMap:
         """Cells the robot's centre must not enter.
 
         Confirmed obstacles grown by the body radius, plus the wall band. Merely
-        UNKNOWN cells stay open -- refusing to enter unseen space would stop the
+        UNKNOWN cells stay open, refusing to enter unseen space would stop the
         robot before it had seen anything; the reactive layer keeps that safe.
         """
         blocked = _dilate(self.state == OCCUPIED, self._inflate_cells)
@@ -222,8 +217,8 @@ class CoverageMap:
         """
         blocked = self.blocked_mask()
         if blocked[start]:
-            # The robot is somewhere the planner calls illegal -- nudged into
-            # the wall band, say. Clearing just the start cell is not enough:
+            # The robot is somewhere the planner calls illegal. 
+            # Clearing just the start cell is not enough:
             # its neighbours are usually illegal too and the search would die
             # at once, so clear enough room to escape.
             blocked = blocked.copy()

@@ -2,8 +2,6 @@
 
 Every value here is read off the Webots R2025a PROTO sources
 (`E-puck.proto`, `E-puckDistanceSensor.proto`, `RectangleArena.proto`)
-rather than guessed, so this module is the single place to correct if the
-model ever changes.
 """
 
 # ---- Geometry and motor limits ----
