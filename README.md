@@ -1,23 +1,149 @@
+<div align="center">
+
 # webots-projects
 
-Worlds, controllers, and other resources I build for my robotics university
-course, using [Webots](https://cyberbotics.com/). Everything is kept
-in one repository and the Python environment is managed with
-[uv](https://docs.astral.sh/uv/).
+**Robot simulation coursework — coverage planning, industrial pick-and-place, and manipulator kinematics.**
 
-## Prerequisites
+<p>
+  <img alt="Webots R2025a" src="https://img.shields.io/badge/Webots-R2025a-1a73e8?style=flat-square">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="uv" src="https://img.shields.io/badge/managed%20with-uv-261230?style=flat-square">
+</p>
 
-- [**Webots**](https://cyberbotics.com/) (installed at `/Applications/Webots.app` on macOS).
-- [**uv**](https://docs.astral.sh/uv/) (`brew install uv`).
+Worlds, controllers, and analysis built for my robotics university course using
+[Webots](https://cyberbotics.com/).
+
+</div>
+
+---
+
+## Contents
+
+| Project | What it does | Simulator |
+| --- | --- | --- |
+| [E-puck Roomba](#-e-puck-roomba) | Systematic floor coverage of an unknown arena | Webots |
+| [SCARA fruit sorting](#-scara-fruit-sorting) | Industrial pick-and-place, deliberately mis-sorting | Webots |
+| [Forward kinematics](#-forward-kinematics) | 3-DoF planar RRR chain, pose from joint angles | Pure Python |
+
+---
+
+## E-puck Roomba
+
+> `worlds/epuck.wbt` + `controllers/epuck_roomba`
+
+Systematic floor coverage in the Tutorial 1 arena, with three wooden boxes. 
+The robot is told **the size of its arena and nothing else**; the
+walls and boxes are discovered by infra-red.
+
+<div align="center">
+  <img src="docs/figures/roomba_coverage.png" alt="Coverage map and coverage-over-time curve" width="900">
+</div>
+
+It sweeps the floor in boustrophedon lanes 5 cm apart while building a 2 cm
+occupancy and coverage grid, then switches to breadth-first search toward the
+nearest cell that would still sweep new ground, until nothing reachable is left.
+
+**Four layers, bottom-up:**
+
+| Layer | Approach |
+| --- | --- |
+| **Odometry** | Wheel-encoder dead reckoning with midpoint integration, re-anchored to ground truth every 5 s via the supervisor API |
+| **Perception** | IR readings converted to metric distances by inverting the sensor's own `lookupTable`, rather than picking magic thresholds |
+| **Planning** | Lane sweep first, then BFS to the nearest uncovered cell — uniform edge cost means there is nothing for A\* to improve on |
+| **Reactive** | A repulsive potential field with a tangential term blended into the waypoint bearing, plus a stall detector that backs out of traps |
+
+**Last measured run:**
+
+| Metric | Value |
+| --- | --- |
+| Coverage | **91.5%** — 2219 / 2426 cells, 0.888 m² |
+| Of reachable floor | **99.4%** |
+| Simulated time | 338.9 s |
+| Stop reason | nothing reachable left to cover |
+| True misses | **2 cells** |
+
+```bash
+# headless run — ends by itself when nothing reachable remains
+/Applications/Webots.app/Contents/MacOS/webots --batch --minimize \
+    --no-rendering --mode=fast --stdout --stderr worlds/epuck.wbt
+
+# then render the figure above
+uv run python analysis/plot_coverage.py
+```
+
+---
+
+## SCARA fruit sorting
+
+> `worlds/industrial_example.wbt` + `controllers/scara_food_industry`
+
+An Epson SCARA T6 sorting fruit, adapted from the Cyberbotics sample of the same
+name so that it sorts the fruit into the wrong crates: the robot alternates
+orange, apple, orange, … and places each one in the crate originally intended
+for the other. Its LED starts off and toggles on every fifth orange that has
+been both picked and placed.
+
+Every placement is printed, which is the quickest way to see the LED rule
+holding:
+
+```text
+cycle   9  placed orange in the apple  bin  (orange #5)   -- LED ON
+cycle  19  placed orange in the apple  bin  (orange #10)  -- LED OFF
+cycle  29  placed orange in the apple  bin  (orange #15)  -- LED ON
+```
+
+> [!NOTE]
+> As in the original sample, the grasp is faked. With supervisor access the
+> fruit node is teleported just under the suction tool on every step it is
+> held, and released by no longer doing so — there is no gripper physics.
+
+```bash
+# loops indefinitely; stop it when you have seen enough
+/Applications/Webots.app/Contents/MacOS/webots --batch --minimize \
+    --no-rendering --mode=fast --stdout --stderr worlds/industrial_example.wbt
+```
+
+---
+
+## Forward kinematics
+
+> `forward-kinematics/`
+
+A 3-DoF planar RRR chain with link lengths 30 / 25 / 20 mm. Given three joint
+angles it returns the end-effector pose `(x, y, φ)`, where φ is the sum of the
+joint angles reduced to (−180°, 180°] — an orientation of 540° and one of 180°
+are the same pose.
+
+<div align="center">
+  <img src="docs/figures/fk_arm.png" alt="Four arm configurations with the reach circle" width="460">
+</div>
+
+```bash
+uv run python forward-kinematics/main.py       # interactive: enter three angles
+uv run python forward-kinematics/plot_arm.py   # renders the figure above
+```
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- **[Webots](https://cyberbotics.com/)** — R2025a, installed at
+  `/Applications/Webots.app` on macOS.
+- **[uv](https://docs.astral.sh/uv/)** — `brew install uv`.
+
+```bash
+uv sync          # everything, including pytest
+uv sync --no-dev # runtime only
+```
 
 ### Pointing Webots at the uv environment
 
-The `controller` module is provided by Webots itself — it is **not** a pip
-package. For controllers to also see the packages from this project (`numpy`,
-the shared `epucklib` library, …), Webots must run them with **this
-project's** Python interpreter.
-
-Set the Python command in Webots to the project venv:
+The `controller` module is provided by Webots itself. It is **not** a pip
+package. For controllers to also see this project's packages (`numpy`, the
+shared `epucklib` library, …), Webots must run them with **this project's**
+Python interpreter.
 
 **Webots → Settings → General → Python command:**
 
@@ -25,69 +151,11 @@ Set the Python command in Webots to the project venv:
 <your-path-to-webots-projects>/.venv/bin/python
 ```
 
-## Exercises
+### Tests
 
-- **`worlds/industrial_example.wbt` + `controllers/scara_food_industry`** — an
-  Epson SCARA T6 sorting fruit, adapted from the Cyberbotics sample of the same
-  name so that it sorts the fruit *into the wrong crates*: the robot alternates
-  orange, apple, orange, … and places each one in the crate originally intended
-  for the other. Its LED starts off and toggles on every fifth orange that has
-  been both picked and placed, so it changes state after oranges 5, 10, 15, …
+`epucklib` never imports the Webots `controller` module, so all of it runs
+under plain pytest — no simulator needed.
 
-  Each placement is printed, which is the quickest way to see the LED rule
-  holding:
-
-  ```text
-  cycle   9  placed orange in the apple  bin  (orange #5)  -- LED ON
-  cycle  19  placed orange in the apple  bin  (orange #10)  -- LED OFF
-  ```
-  
-  As in the original sample the grasp is faked: with supervisor access the
-  fruit node is teleported just under the suction tool on every step it is
-  held, and released by no longer doing so.
-
-- **`worlds/epuck.wbt` + `controllers/epuck_roomba`** — systematic floor
-  coverage in the Tutorial 1 arena (three wooden boxes): a basic Roomba. The
-  robot is told the size of its arena and nothing else; the walls and boxes are
-  discovered by infra-red.
-
-  It sweeps the floor in boustrophedon lanes 5 cm apart while building a 2 cm
-  occupancy and coverage grid, then switches to breadth-first search toward the
-  nearest cell that would still sweep new ground, until nothing reachable is
-  left. Layers: wheel-encoder dead reckoning re-anchored to ground truth every
-  5 s through the supervisor API (`MOCAP_INTERVAL_S = 0` to watch pure dead
-  reckoning smear the map); IR readings converted to metric distances by
-  inverting the sensor's own `lookupTable`; a repulsive potential field with a
-  tangential term blended into the waypoint bearing; and a stall detector that
-  backs out of traps. Coverage progress goes to the console.
-
-  On its last measured run it covered 91.5% of the arena floor (99.4% of what
-  the coverage metric can represent — a one-cell ring around the border can
-  never be credited as swept, see below) and stopped at t≈339 s of simulated
-  time because nothing reachable remained.
-
-  Headless run:
-
-  ```bash
-  /Applications/Webots.app/Contents/MacOS/webots --batch --minimize \
-      --no-rendering --mode=fast --stdout --stderr worlds/epuck.wbt
-  ```
-
-  Then render the figure:
-
-  ```bash
-  uv run python analysis/plot_coverage.py
-  ```
-
-  ![coverage map](docs/figures/roomba_coverage.png)
-
-  The light grey border in the figure is not missed floor: the robot's centre
-  can never get within a body radius of the wall, so that outer ring is
-  structurally out of the coverage metric's reach rather than actually
-  unswept.
-
-  The white specks *inside* the black boxes are not unswept floor either —
-  they are box interior that only ever got seen once, so it never reached the
-  two-hit threshold that confirms an obstacle. Of the 207 uncovered cells, 193
-  are that out-of-reach ring and 12 of the remaining 14 are these interior
-  specks, which puts the robot's true miss count at 2 cells.
+```bash
+uv run pytest
+```
