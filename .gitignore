@@ -28,12 +28,17 @@ libraries/**/build/
 *.so
 *.dylib
 
+# ---- Simulation run outputs ----
+# Traces and maps written by a run; regenerate them by running the sim.
+analysis/traces/
+
 # ---- macOS ----
 .DS_Store
 .AppleDouble
 .LSOverride
 
 # ---- Agent / tooling state ----
+docs/superpowers/
 .claude-flow/
 .swarm/
 .hive-mind/
