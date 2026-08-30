@@ -28,8 +28,7 @@ held, and released by simply no longer doing that.
 
 from controller import Supervisor
 
-# The world DEFs fruit1 as the Orange and fruit0 as the Apple; the number is
-# the suffix of the DEF name, so it doubles as the node lookup key.
+# The world DEFs fruit1 as the Orange and fruit0 as the Apple
 ORANGE = 1
 APPLE = 0
 FRUIT_NAME = {ORANGE: "orange", APPLE: "apple"}
@@ -39,11 +38,9 @@ FRUIT_NAME = {ORANGE: "orange", APPLE: "apple"}
 ORANGE_BIN = (0.0, -0.83)
 APPLE_BIN = (-0.50, -0.83)
 
-# Requirement 1: every fruit goes to the *other* fruit's crate.
 TARGET_BIN = {ORANGE: APPLE_BIN, APPLE: ORANGE_BIN}
 BIN_NAME = {ORANGE: "apple", APPLE: "orange"}
 
-# Requirement 2.
 ORANGES_PER_TOGGLE = 5
 
 PICK_POSE = (0.2, 0.6)  # (base_arm, arm) over the incoming fruit
@@ -63,7 +60,7 @@ CYCLE_END = 276
 
 
 class Led:
-    """The epson_led, kept in a known state so its changes carry meaning."""
+    """The epson_led"""
 
     def __init__(self, device) -> None:
         self.device = device
