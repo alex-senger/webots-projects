@@ -1,8 +1,8 @@
 """Turning e-puck infra-red readings into geometry.
 
-The e-puck's proximity sensors report a raw number rather than a distance. This 
-module inverts the very lookup table the simulator uses to produce those numbers, 
-so a reading becomes a distance in metres and every downstream decision can be 
+The e-puck's proximity sensors report a raw number rather than a distance. This
+module inverts the very lookup table the simulator uses to produce those numbers,
+so a reading becomes a distance in metres and every downstream decision can be
 expressed in real units.
 """
 

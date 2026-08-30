@@ -206,9 +206,7 @@ class CoverageMap:
                     return True
         return False
 
-    def nearest_uncovered(
-        self, start: tuple[int, int]
-    ) -> list[tuple[int, int]] | None:
+    def nearest_uncovered(self, start: tuple[int, int]) -> list[tuple[int, int]] | None:
         """Breadth-first path from `start` to the closest worthwhile cell.
 
         Because every grid edge costs the same, a plain BFS already yields the
@@ -217,7 +215,7 @@ class CoverageMap:
         """
         blocked = self.blocked_mask()
         if blocked[start]:
-            # The robot is somewhere the planner calls illegal. 
+            # The robot is somewhere the planner calls illegal.
             # Clearing just the start cell is not enough:
             # its neighbours are usually illegal too and the search would die
             # at once, so clear enough room to escape.
@@ -237,7 +235,12 @@ class CoverageMap:
                 return self._trace_path(came_from, current)
 
             row, col = current
-            for neighbour in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
+            for neighbour in (
+                (row - 1, col),
+                (row + 1, col),
+                (row, col - 1),
+                (row, col + 1),
+            ):
                 r, c = neighbour
                 if 0 <= r < self.n and 0 <= c < self.n:
                     if neighbour not in came_from and not blocked[neighbour]:
@@ -253,9 +256,7 @@ class CoverageMap:
         path.reverse()
         return path
 
-    def shortcut(
-        self, path: Sequence[tuple[int, int]]
-    ) -> list[tuple[int, int]]:
+    def shortcut(self, path: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
         """Drop waypoints the robot can simply drive past.
 
         BFS returns a staircase of single-cell steps; following it literally

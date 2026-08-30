@@ -19,13 +19,15 @@ class Pose:
 class DeadReckoning:
     """Tracks a pose from wheel-encoder positions.
 
-    Encoder values are absolute wheel angles in radians. 
-    Integration happens at the arc midpoint, which is exact for 
-    constant-curvature motion between two samples and markedly better 
+    Encoder values are absolute wheel angles in radians.
+    Integration happens at the arc midpoint, which is exact for
+    constant-curvature motion between two samples and markedly better
     than the naive Euler form over long runs.
     """
 
-    def __init__(self, left_rad: float, right_rad: float, pose: Pose | None = None) -> None:
+    def __init__(
+        self, left_rad: float, right_rad: float, pose: Pose | None = None
+    ) -> None:
         self._prev_left = left_rad
         self._prev_right = right_rad
         self.pose = pose if pose is not None else Pose()

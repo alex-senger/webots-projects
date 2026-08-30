@@ -62,8 +62,15 @@ PROGRESS_WINDOW_S = 60.0  # how long coverage may stagnate before giving up
 PROGRESS_MIN = 0.005  # 0.5 percentage points counts as progress
 
 TRACE_FIELDS = [
-    "t_s", "mode", "x", "y", "theta",
-    "gt_x", "gt_y", "drift_m", "coverage",
+    "t_s",
+    "mode",
+    "x",
+    "y",
+    "theta",
+    "gt_x",
+    "gt_y",
+    "drift_m",
+    "coverage",
 ]
 
 
@@ -211,7 +218,9 @@ class Roomba:
             return None
 
         # The first cell is where the robot already stands, so drop it.
-        self.path = [self.map.cell_center(*cell) for cell in self.map.shortcut(cells)[1:]]
+        self.path = [
+            self.map.cell_center(*cell) for cell in self.map.shortcut(cells)[1:]
+        ]
         if not self.path:
             self.finish("nothing reachable left to cover")
             return None

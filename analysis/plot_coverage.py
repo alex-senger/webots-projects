@@ -19,8 +19,8 @@ from matplotlib.colors import ListedColormap
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from epucklib.epuck import BODY_RADIUS_M  # noqa: E402
-from epucklib.grid import OCCUPIED, CoverageMap  # noqa: E402
+from epucklib.epuck import BODY_RADIUS_M
+from epucklib.grid import OCCUPIED, CoverageMap
 
 TRACES = REPO_ROOT / "analysis" / "traces"
 CONTROLLER_NAME = "epuck_roomba"

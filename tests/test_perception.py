@@ -65,8 +65,16 @@ def test_an_obstacle_on_the_right_pushes_left():
 
 
 def test_a_closer_obstacle_pushes_harder():
-    near = list(perception.repulsion([0.01 if i == 2 else epuck.IR_MAX_RANGE_M for i in range(8)]))
-    far = list(perception.repulsion([0.05 if i == 2 else epuck.IR_MAX_RANGE_M for i in range(8)]))
+    near = list(
+        perception.repulsion(
+            [0.01 if i == 2 else epuck.IR_MAX_RANGE_M for i in range(8)]
+        )
+    )
+    far = list(
+        perception.repulsion(
+            [0.05 if i == 2 else epuck.IR_MAX_RANGE_M for i in range(8)]
+        )
+    )
     assert near[1] > far[1] > 0.0
 
 

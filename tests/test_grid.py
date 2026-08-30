@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-from epucklib import epuck
 from epucklib.grid import FREE, OCCUPIED, UNKNOWN, CoverageMap
 
 
