@@ -22,37 +22,8 @@ Set the Python command in Webots to the project venv:
 **Webots → Settings → General → Python command:**
 
 ```bash
-/Users/asg/workspaces/webots-projects/.venv/bin/python
+<your-path-to-webots-projects>/.venv/bin/python
 ```
-
-Alternatively, set it per-controller with a `runtime.ini` next to the
-controller file:
-
-```ini
-[python]
-COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
-```
-
-## Adding a new exercise
-
-1. Create the world: `worlds/<exercise>.wbt` (usually done from the Webots GUI).
-2. Create the controller folder and file with **matching names**:
-
-   ```text
-   controllers/<exercise>/<exercise>.py
-   ```
-
-3. In the world, set the robot's `controller` field to `<exercise>`.
-4. A minimal controller using the shared helpers:
-
-   ```python
-   from controller import Robot
-   from webots_projects import run
-
-   robot = Robot()
-   for step in run(robot):
-       pass  # read sensors, run logic, drive motors each time step
-   ```
 
 ## Exercises
 
@@ -74,18 +45,3 @@ COMMAND = /Users/asg/workspaces/webots-projects/.venv/bin/python
   As in the original sample the grasp is faked: with supervisor access the
   fruit node is teleported just under the suction tool on every step it is
   held, and released by no longer doing so.
-
-  Headless run:
-
-  ```bash
-  /Applications/Webots.app/Contents/MacOS/webots --batch --minimize \
-      --no-rendering --mode=fast --stdout --stderr worlds/industrial_example.wbt
-  ```
-
-## Dependencies
-
-- Runtime: `numpy` (see `pyproject.toml`).
-- Dev group: `matplotlib` for plotting/analysis — installed by `uv sync`,
-  skipped with `uv sync --no-dev`.
-
-Add more with `uv add <package>` (or `uv add --dev <package>`).
