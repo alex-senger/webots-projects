@@ -21,9 +21,9 @@ Worlds, controllers, and analysis built for my robotics university course using
 
 | Project | What it does | Simulator |
 | --- | --- | --- |
-| [E-puck Roomba](#-e-puck-roomba) | Systematic floor coverage of an unknown arena | Webots |
-| [SCARA fruit sorting](#-scara-fruit-sorting) | Industrial pick-and-place, deliberately mis-sorting | Webots |
-| [Forward kinematics](#-forward-kinematics) | 3-DoF planar RRR chain, pose from joint angles | Pure Python |
+| [E-puck Roomba](#e-puck-roomba) | Systematic floor coverage of an unknown arena | Webots |
+| [SCARA fruit sorting](#scara-fruit-sorting) | Industrial pick-and-place, deliberately mis-sorting | Webots |
+| [Forward kinematics](#forward-kinematics) | 3-DoF planar RRR chain, pose from joint angles | Pure Python |
 
 ---
 
